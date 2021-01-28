@@ -49,66 +49,66 @@ class _HomePageState extends State<HomePage> {
         centerTitle: true,
         title: Text('NekoX Releases'),
       ),
-      body: Column(
-        children: <Widget>[
-          Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('Installed: ${_packageInfo != null ? 'v' + _packageInfo.versionName : 'N/A'}'),
-          ),
-          _releaseCache == null
-              ? FutureBuilder(
-                  future: _getReleases(),
-                  builder: (BuildContext ctx, AsyncSnapshot<List<GitRelease>> snapshot) {
-                    if (snapshot.data == null) {
-                      return _loading;
-                    }
+      body: _releaseCache == null
+          ? FutureBuilder(
+              future: _getReleases(),
+              builder: (BuildContext ctx, AsyncSnapshot<List<GitRelease>> snapshot) {
+                if (snapshot.data == null) {
+                  return _loading;
+                }
 
-                    _releaseCache = snapshot.data;
-                    return _releaseList;
-                  },
-                )
-              : _releaseList,
-        ],
-      ),
+                _releaseCache = snapshot.data;
+                return _releaseList;
+              },
+            )
+          : _releaseList,
     );
   }
 
-  Widget get _releaseList => Expanded(
-        child: ListView.builder(
-          itemCount: _releaseCache.length,
-          itemBuilder: (BuildContext ctx, int index) {
-            var release = _releaseCache[index];
-            return ExpandableGroup(
-              collapsedIcon: Icon(Icons.arrow_drop_down),
-              expandedIcon: Icon(Icons.arrow_drop_up),
-              header: Padding(
-                padding: EdgeInsets.only(left: 16),
-                child: Text.rich(
-                  TextSpan(
-                    text: '${release.name}\n',
-                    children: [
+  Widget get _releaseList => Column(
+        children: [
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('Installed: ${_packageInfo.versionName}'),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _releaseCache.length,
+              itemBuilder: (BuildContext ctx, int index) {
+                var release = _releaseCache[index];
+                return ExpandableGroup(
+                  collapsedIcon: Icon(Icons.arrow_drop_down),
+                  expandedIcon: Icon(Icons.arrow_drop_up),
+                  header: Padding(
+                    padding: EdgeInsets.only(left: 16),
+                    child: Text.rich(
                       TextSpan(
-                        text: '${release.author.login}',
-                        style: Theme.of(context).textTheme.caption,
+                        text: '${release.name}\n',
+                        children: [
+                          TextSpan(
+                            text: '${release.author.login}',
+                            style: Theme.of(context).textTheme.caption,
+                          ),
+                          TextSpan(
+                            text: ' - ',
+                            style: Theme.of(context).textTheme.caption,
+                          ),
+                          TextSpan(
+                            text: _getDateStr(release.createdAt),
+                            style: Theme.of(context).textTheme.caption,
+                          ),
+                        ],
                       ),
-                      TextSpan(
-                        text: ' - ',
-                        style: Theme.of(context).textTheme.caption,
-                      ),
-                      TextSpan(
-                        text: _getDateStr(release.createdAt),
-                        style: Theme.of(context).textTheme.caption,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-              items: <ListTile>[
-                ...release.assets.map((e) => _getReleaseChild(e)),
-              ],
-            );
-          },
-        ),
+                  items: <ListTile>[
+                    ...release.assets.map((e) => _getReleaseChild(e)),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
       );
 
   String _getDateStr(DateTime time) => '${time.day.toString().padLeft(2, '0')}.${time.month.toString().padLeft(2, '0')}.${time.year}';
