@@ -10,6 +10,7 @@ class GitReleaseFetcher {
 
   static Future<List<GitRelease>> getReleases() async {
     var rawData = await http.get(_RELEASES_URL, headers: {
+      'User-Agent': 'curl/7.99',
       'Accept': 'application/vnd.github.v3+json',
     });
 
