@@ -6,6 +6,7 @@ import 'package:expandable_group/expandable_group_widget.dart';
 import 'package:r_upgrade/r_upgrade.dart';
 import 'package:device_info/device_info.dart';
 import 'package:flutter_package_manager/flutter_package_manager.dart';
+import 'package:pull_to_refresh/pull_to_refresh.dart';
 
 class HomePage extends StatefulWidget {
   HomePage({Key key}) : super(key: key);
@@ -15,10 +16,15 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  List<GitRelease> _releaseCache;
+  List<GitRelease> _releaseCache = [];
   DeviceInfoPlugin _deviceInfo;
   AndroidDeviceInfo _android;
   PackageInfo _packageInfo;
+
+  RefreshController _refreshController = RefreshController(
+    initialRefresh: true,
+    initialRefreshStatus: RefreshStatus.refreshing,
+  );
 
   @override
   void initState() {
@@ -36,10 +42,19 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  @override
+  void setState(fn) {
+    if (mounted) {
+      super.setState(fn);
+    }
+  }
+
   Future<List<GitRelease>> _getReleases() async {
     _android = await _deviceInfo.androidInfo;
-    _packageInfo = await FlutterPackageManager.getPackageInfo('nekox.messenger');
-    return GitReleaseFetcher.getReleases();
+    try {
+      _packageInfo = await FlutterPackageManager.getPackageInfo('nekox.messenger');
+    } catch (e) {}
+    return GitReleaseFetcher.getReleases(context);
   }
 
   @override
@@ -49,19 +64,16 @@ class _HomePageState extends State<HomePage> {
         centerTitle: true,
         title: Text('NekoX Releases'),
       ),
-      body: _releaseCache == null
-          ? FutureBuilder(
-              future: _getReleases(),
-              builder: (BuildContext ctx, AsyncSnapshot<List<GitRelease>> snapshot) {
-                if (snapshot.data == null) {
-                  return _loading;
-                }
-
-                _releaseCache = snapshot.data;
-                return _releaseList;
-              },
-            )
-          : _releaseList,
+      body: SmartRefresher(
+        onRefresh: () async {
+          _releaseCache = await _getReleases();
+          _refreshController.refreshCompleted();
+          setState(() {});
+        },
+        controller: _refreshController,
+        header: WaterDropMaterialHeader(),
+        child: _refreshController.isRefresh ? _loading : _releaseList,
+      ),
     );
   }
 
@@ -69,7 +81,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('Installed: ${_packageInfo.versionName}'),
+            child: Text('Installed: ${_packageInfo?.versionName ?? 'N/A'}'),
           ),
           Expanded(
             child: ListView.builder(
@@ -151,11 +163,23 @@ class _HomePageState extends State<HomePage> {
         case 'fullAppleEmoji':
           out.add('Full Applemoji');
           break;
+        case 'fullNoEmoji':
+          out.add('Full NoEmoji');
+          break;
+        case 'fullTwitterEmoji':
+          out.add('Full Twemoji');
+          break;
         case 'mini':
           out.add('Mini');
           break;
         case 'miniAppleEmoji':
           out.add('Mini Applemoji');
+          break;
+        case 'miniNoEmoji':
+          out.add('Mini NoEmoji');
+          break;
+        case 'miniTwitterEmoji':
+          out.add('Mini Twemoji');
           break;
         case 'arm64':
           out.add('ARMv8');
@@ -189,12 +213,5 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Widget get _loading => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            CircularProgressIndicator(),
-          ],
-        ),
-      );
+  Widget get _loading => Container();
 }
