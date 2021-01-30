@@ -1,4 +1,6 @@
+import 'package:connectivity/connectivity.dart';
 import 'package:flutter/material.dart';
+import 'package:nekox_updater/main.dart';
 import 'package:nekox_updater/models/asset.dart';
 import 'package:nekox_updater/models/release.dart';
 import 'package:nekox_updater/network/base.dart';
@@ -23,6 +25,8 @@ class _HomePageState extends State<HomePage> {
 
   bool _downloading = false;
   DownloadInfo _downloadInfo;
+  GitRelease _downloadingRelease;
+  bool _hasInternet = true;
 
   RefreshController _refreshController = RefreshController(
     initialRefresh: true,
@@ -34,14 +38,20 @@ class _HomePageState extends State<HomePage> {
     super.initState();
 
     var statuses = [
+      DownloadStatus.STATUS_PAUSED,
       DownloadStatus.STATUS_PENDING,
       DownloadStatus.STATUS_RUNNING,
+    ];
+
+    var finishedStatuses = [
+      DownloadStatus.STATUS_FAILED,
+      DownloadStatus.STATUS_SUCCESSFUL,
     ];
 
     RUpgrade.stream.listen((e) {
       _downloading = statuses.contains(e.status);
       _downloadInfo = e;
-      if (_downloading) setState(() {});
+      if (_downloading || finishedStatuses.contains(e.status)) setState(() {});
     });
   }
 
@@ -54,6 +64,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<List<GitRelease>> _getReleases() async {
     _android = await _deviceInfo.androidInfo;
+    _hasInternet = await GitReleaseFetcher.isConnected(context);
     try {
       _packageInfo = await FlutterPackageManager.getPackageInfo('nekox.messenger');
     } catch (e) {}
@@ -68,6 +79,7 @@ class _HomePageState extends State<HomePage> {
         title: Text('NekoX Releases'),
       ),
       body: SmartRefresher(
+        enablePullDown: !_downloading,
         onRefresh: () async {
           _releaseCache = await _getReleases();
           _refreshController.refreshCompleted();
@@ -79,7 +91,9 @@ class _HomePageState extends State<HomePage> {
             ? _downloadIndicator
             : _refreshController.isRefresh
                 ? _loading
-                : _releaseList,
+                : _hasInternet
+                    ? _releaseList
+                    : _noInternet,
       ),
     );
   }
@@ -131,7 +145,7 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           items: <ListTile>[
-            ...release.assets.map((e) => _getReleaseChild(e)),
+            ...release.assets.map((e) => _getReleaseChild(release, e)),
           ],
         );
       };
@@ -147,7 +161,7 @@ class _HomePageState extends State<HomePage> {
 
   String _getDateStr(DateTime time) => '${time.day.toString().padLeft(2, '0')}.${time.month.toString().padLeft(2, '0')}.${time.year}';
 
-  Widget _getReleaseChild(GitAsset asset) => ListTile(
+  Widget _getReleaseChild(GitRelease release, GitAsset asset) => ListTile(
         title: Text(asset.getReleaseChildTitle(_android)),
         subtitle: Text(
           '${(asset.size.toDouble() / (1 << 20)).toStringAsFixed(2)}MB, ${asset.downloadCount} downloads',
@@ -161,6 +175,7 @@ class _HomePageState extends State<HomePage> {
           onPressed: _downloading
               ? null
               : () async {
+                  _downloadingRelease = release;
                   await RUpgrade.upgrade(
                     asset.downloadURL,
                     notificationVisibility: NotificationVisibility.VISIBILITY_HIDDEN,
@@ -181,7 +196,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text('Downloading'),
+              Text('Downloading ${_downloadingRelease.name}'),
               Text('${GitAsset.getReleaseChildTitleStatic(_downloadInfo.path.substring(_downloadInfo.path.lastIndexOf('/')), _android)}'),
               if (_downloadInfo.maxLength > 0)
                 Padding(
@@ -211,4 +226,24 @@ class _HomePageState extends State<HomePage> {
     // print(ret);
     return ret;
   }
+
+  Widget get _noInternet => Container(
+        color: Colors.red,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                'No internet connection',
+                style: TextStyle(color: Colors.white),
+              ),
+              Padding(padding: EdgeInsets.only(bottom: 8)),
+              ElevatedButton(
+                child: Text('TRY AGAIN'),
+                onPressed: () => _refreshController.requestRefresh(),
+              ),
+            ],
+          ),
+        ),
+      );
 }
