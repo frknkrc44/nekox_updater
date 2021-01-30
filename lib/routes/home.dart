@@ -1,6 +1,4 @@
-import 'package:connectivity/connectivity.dart';
 import 'package:flutter/material.dart';
-import 'package:nekox_updater/main.dart';
 import 'package:nekox_updater/models/asset.dart';
 import 'package:nekox_updater/models/release.dart';
 import 'package:nekox_updater/network/base.dart';
@@ -68,7 +66,11 @@ class _HomePageState extends State<HomePage> {
     try {
       _packageInfo = await FlutterPackageManager.getPackageInfo('nekox.messenger');
     } catch (e) {}
-    return GitReleaseFetcher.getReleases(context);
+    var releases = await GitReleaseFetcher.getReleases(context);
+    releases.removeWhere(
+      (e) => releases.indexOf(e) > releases.indexWhere((e) => e.name == 'v${_getReleaseName(_packageInfo?.versionName ?? '')}'),
+    );
+    return releases;
   }
 
   @override
@@ -101,8 +103,29 @@ class _HomePageState extends State<HomePage> {
   Widget get _releaseList => Column(
         children: [
           Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('Installed: ${_packageInfo?.versionName ?? 'N/A'}'),
+            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+            child: Row(
+              mainAxisSize: MainAxisSize.max,
+              children: <Widget>[
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text('Installed:'),
+                    Text('Latest:'),
+                  ],
+                ),
+                Expanded(
+                  child: Padding(padding: EdgeInsets.only(right: 8)),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    Text(_packageInfo?.versionName ?? 'N/A'),
+                    Text(_releaseCache?.first?.name?.replaceFirst('v', '') ?? 'N/A'),
+                  ],
+                ),
+              ],
+            ),
           ),
           Expanded(
             child: ListView.builder(
@@ -151,12 +174,16 @@ class _HomePageState extends State<HomePage> {
       };
 
   String _getInstalledIndicator(String releaseName) {
+    return releaseName == 'v${_getReleaseName(releaseName)}' ? ' - Installed' : '';
+  }
+
+  String _getReleaseName(String releaseName) {
     var versionName = _packageInfo?.versionName ?? '';
     if (versionName.isEmpty) return '';
     versionName = versionName.replaceAll(RegExp('(mini|full|apple|emoji)'), '');
     versionName = versionName.replaceAll('-', ' ').trim();
     versionName = versionName.replaceAll(' ', '-');
-    return releaseName == 'v$versionName' ? ' - Installed' : '';
+    return versionName;
   }
 
   String _getDateStr(DateTime time) => '${time.day.toString().padLeft(2, '0')}.${time.month.toString().padLeft(2, '0')}.${time.year}';
@@ -175,6 +202,18 @@ class _HomePageState extends State<HomePage> {
           onPressed: _downloading
               ? null
               : () async {
+                  var sourceRelease = _releaseCache.indexOf(release);
+                  var installedRelease = _releaseCache.indexWhere((e) => e.name == 'v${_getReleaseName(_packageInfo?.versionName ?? '')}');
+                  if (sourceRelease > installedRelease) {
+                    showDialog(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: Text('Downgrade warning'),
+                        content: Text('Android system restricts downgrade of NekoX'),
+                      ),
+                    );
+                    return;
+                  }
                   _downloadingRelease = release;
                   await RUpgrade.upgrade(
                     asset.downloadURL,
@@ -238,7 +277,7 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(color: Colors.white),
               ),
               Padding(padding: EdgeInsets.only(bottom: 8)),
-              ElevatedButton(
+              FlatButton(
                 child: Text('TRY AGAIN'),
                 onPressed: () => _refreshController.requestRefresh(),
               ),
