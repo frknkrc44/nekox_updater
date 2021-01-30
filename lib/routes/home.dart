@@ -17,9 +17,12 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<GitRelease> _releaseCache = [];
-  DeviceInfoPlugin _deviceInfo;
+  DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
   AndroidDeviceInfo _android;
   PackageInfo _packageInfo;
+
+  bool _downloading = false;
+  DownloadInfo _downloadInfo;
 
   RefreshController _refreshController = RefreshController(
     initialRefresh: true,
@@ -30,8 +33,6 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
 
-    _deviceInfo = DeviceInfoPlugin();
-
     var statuses = [
       DownloadStatus.STATUS_PENDING,
       DownloadStatus.STATUS_RUNNING,
@@ -39,6 +40,8 @@ class _HomePageState extends State<HomePage> {
 
     RUpgrade.stream.listen((e) {
       _downloading = statuses.contains(e.status);
+      _downloadInfo = e;
+      if (_downloading) setState(() {});
     });
   }
 
@@ -72,7 +75,11 @@ class _HomePageState extends State<HomePage> {
         },
         controller: _refreshController,
         header: WaterDropMaterialHeader(),
-        child: _refreshController.isRefresh ? _loading : _releaseList,
+        child: _downloading
+            ? _downloadIndicator
+            : _refreshController.isRefresh
+                ? _loading
+                : _releaseList,
       ),
     );
   }
@@ -86,47 +93,62 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: ListView.builder(
               itemCount: _releaseCache.length,
-              itemBuilder: (BuildContext ctx, int index) {
-                var release = _releaseCache[index];
-                return ExpandableGroup(
-                  collapsedIcon: Icon(Icons.arrow_drop_down),
-                  expandedIcon: Icon(Icons.arrow_drop_up),
-                  header: Padding(
-                    padding: EdgeInsets.only(left: 16),
-                    child: Text.rich(
-                      TextSpan(
-                        text: '${release.name}\n',
-                        children: [
-                          TextSpan(
-                            text: '${release.author.login}',
-                            style: Theme.of(context).textTheme.caption,
-                          ),
-                          TextSpan(
-                            text: ' - ',
-                            style: Theme.of(context).textTheme.caption,
-                          ),
-                          TextSpan(
-                            text: _getDateStr(release.createdAt),
-                            style: Theme.of(context).textTheme.caption,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  items: <ListTile>[
-                    ...release.assets.map((e) => _getReleaseChild(e)),
-                  ],
-                );
-              },
+              itemBuilder: _releaseListItemBuilder,
             ),
           ),
         ],
       );
 
+  Function(BuildContext, int) get _releaseListItemBuilder => (BuildContext ctx, int index) {
+        var release = _releaseCache[index];
+        return ExpandableGroup(
+          collapsedIcon: Icon(Icons.arrow_drop_down),
+          expandedIcon: Icon(Icons.arrow_drop_up),
+          header: Padding(
+            padding: EdgeInsets.only(left: 16),
+            child: Text.rich(
+              TextSpan(
+                text: '${release.name}\n',
+                children: [
+                  TextSpan(
+                    text: '${release.author.login}',
+                    style: Theme.of(context).textTheme.caption,
+                  ),
+                  TextSpan(
+                    text: ' - ',
+                    style: Theme.of(context).textTheme.caption,
+                  ),
+                  TextSpan(
+                    text: _getDateStr(release.createdAt),
+                    style: Theme.of(context).textTheme.caption,
+                  ),
+                  TextSpan(
+                    text: _getInstalledIndicator(release.name),
+                    style: Theme.of(context).textTheme.caption,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          items: <ListTile>[
+            ...release.assets.map((e) => _getReleaseChild(e)),
+          ],
+        );
+      };
+
+  String _getInstalledIndicator(String releaseName) {
+    var versionName = _packageInfo?.versionName ?? '';
+    if (versionName.isEmpty) return '';
+    versionName = versionName.replaceAll(RegExp('(mini|full|apple|emoji)'), '');
+    versionName = versionName.replaceAll('-', ' ').trim();
+    versionName = versionName.replaceAll(' ', '-');
+    return releaseName == 'v$versionName' ? ' - Installed' : '';
+  }
+
   String _getDateStr(DateTime time) => '${time.day.toString().padLeft(2, '0')}.${time.month.toString().padLeft(2, '0')}.${time.year}';
 
   Widget _getReleaseChild(GitAsset asset) => ListTile(
-        title: Text(_getReleaseChildTitle(asset)),
+        title: Text(asset.getReleaseChildTitle(_android)),
         subtitle: Text(
           '${(asset.size.toDouble() / (1 << 20)).toStringAsFixed(2)}MB, ${asset.downloadCount} downloads',
           style: Theme.of(context).textTheme.caption,
@@ -141,6 +163,7 @@ class _HomePageState extends State<HomePage> {
               : () async {
                   await RUpgrade.upgrade(
                     asset.downloadURL,
+                    notificationVisibility: NotificationVisibility.VISIBILITY_HIDDEN,
                     useDownloadManager: false,
                     isAutoRequestInstall: true,
                     fileName: asset.name,
@@ -149,69 +172,43 @@ class _HomePageState extends State<HomePage> {
         ),
       );
 
-  bool _downloading = false;
-
-  String _getReleaseChildTitle(GitAsset asset) {
-    var name = asset.name.split('-');
-    List<String> out = [];
-
-    for (var item in name) {
-      switch (item) {
-        case 'full':
-          out.add('Full');
-          break;
-        case 'fullAppleEmoji':
-          out.add('Full Applemoji');
-          break;
-        case 'fullNoEmoji':
-          out.add('Full NoEmoji');
-          break;
-        case 'fullTwitterEmoji':
-          out.add('Full Twemoji');
-          break;
-        case 'mini':
-          out.add('Mini');
-          break;
-        case 'miniAppleEmoji':
-          out.add('Mini Applemoji');
-          break;
-        case 'miniNoEmoji':
-          out.add('Mini NoEmoji');
-          break;
-        case 'miniTwitterEmoji':
-          out.add('Mini Twemoji');
-          break;
-        case 'arm64':
-          out.add('ARMv8');
-          _isAbiSupported(out, 'arm64-v8a');
-          break;
-        case 'armeabi':
-          out.add('ARMv7');
-          _isAbiSupported(out, 'armeabi-v7a');
-          break;
-        case 'x86':
-          out.add(item);
-          _isAbiSupported(out, item);
-          break;
-        case 'x86_64':
-          out.add(item);
-          _isAbiSupported(out, item);
-          break;
-      }
-
-      if (item.contains('NoGcm')) {
-        out.add('FOSS');
-      }
-    }
-
-    return out.join(' ');
-  }
-
-  void _isAbiSupported(List<String> out, String abiName) {
-    if (!_android.supportedAbis.contains(abiName)) {
-      out.add('(Incompatible)');
-    }
-  }
-
   Widget get _loading => Container();
+
+  Widget get _downloadIndicator => Center(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text('Downloading'),
+              Text('${GitAsset.getReleaseChildTitleStatic(_downloadInfo.path.substring(_downloadInfo.path.lastIndexOf('/')), _android)}'),
+              if (_downloadInfo.maxLength > 0)
+                Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator(
+                    backgroundColor: Colors.grey[300],
+                    value: _getProgress(),
+                  ),
+                ),
+              Padding(padding: EdgeInsets.only(top: 8)),
+              Text('${_downloadInfo.speed.toInt()}KB/s - ${_downloadInfo.planTime.toInt()}s left'),
+              Padding(padding: EdgeInsets.only(top: 8)),
+              ElevatedButton(
+                child: Text('CANCEL'),
+                onPressed: () async {
+                  await RUpgrade.cancel(_downloadInfo.id);
+                  setState(() {});
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+
+  double _getProgress() {
+    double ret = (_downloadInfo.currentLength / _downloadInfo.maxLength.toDouble());
+    // print(ret);
+    return ret;
+  }
 }
