@@ -67,9 +67,10 @@ class _HomePageState extends State<HomePage> {
       _packageInfo = await FlutterPackageManager.getPackageInfo('nekox.messenger');
     } catch (e) {}
     var releases = await GitReleaseFetcher.getReleases(context);
-    releases.removeWhere(
-      (e) => releases.indexOf(e) > releases.indexWhere((e) => e.name == 'v${_getReleaseName(_packageInfo?.versionName ?? '')}'),
-    );
+    if (releases.indexWhere((e) => e.name == 'v${_getReleaseName(_packageInfo?.versionName ?? '')}') >= 0)
+      releases.removeWhere(
+        (e) => releases.indexOf(e) > releases.indexWhere((e) => e.name == 'v${_getReleaseName(_packageInfo?.versionName ?? '')}'),
+      );
     return releases;
   }
 
@@ -204,7 +205,7 @@ class _HomePageState extends State<HomePage> {
               : () async {
                   var sourceRelease = _releaseCache.indexOf(release);
                   var installedRelease = _releaseCache.indexWhere((e) => e.name == 'v${_getReleaseName(_packageInfo?.versionName ?? '')}');
-                  if (sourceRelease > installedRelease) {
+                  if (installedRelease > -1 && sourceRelease > installedRelease) {
                     showDialog(
                       context: context,
                       builder: (_) => AlertDialog(
@@ -217,7 +218,7 @@ class _HomePageState extends State<HomePage> {
                   _downloadingRelease = release;
                   await RUpgrade.upgrade(
                     asset.downloadURL,
-                    notificationVisibility: NotificationVisibility.VISIBILITY_HIDDEN,
+                    notificationVisibility: NotificationVisibility.VISIBILITY_VISIBLE_NOTIFY_ONLY_COMPLETION,
                     useDownloadManager: false,
                     isAutoRequestInstall: true,
                     fileName: asset.name,
@@ -236,7 +237,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text('Downloading ${_downloadingRelease.name}'),
-              Text('${GitAsset.getReleaseChildTitleStatic(_downloadInfo.path.substring(_downloadInfo.path.lastIndexOf('/')), _android)}'),
+              Text('${GitAsset.getReleaseChildTitleStatic(_downloadInfo?.path?.substring(_downloadInfo?.path?.lastIndexOf('/') ?? 0), _android)}'),
               if (_downloadInfo.maxLength > 0)
                 Padding(
                   padding: EdgeInsets.only(top: 8),
